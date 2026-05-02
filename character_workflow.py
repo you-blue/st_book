@@ -110,12 +110,14 @@ def split_text():
     print("开始文本分割...")
     try:
         from text_splitter import TextSplitter
+        from project_config import get_config
 
-        # 检查输入文件
-        input_file = "a.txt"
+        # 从配置文件读取源文件路径
+        config = get_config()
+        input_file = config.get('input.source_file', 'a.txt')
         if not Path(input_file).exists():
             print(f"错误: 找不到输入文件 {input_file}")
-            print("请将小说文件命名为 a.txt 并放在当前目录")
+            print("请在 config.yaml 的 input.source_file 中配置正确的小说文件路径")
             return False
 
         splitter = TextSplitter()

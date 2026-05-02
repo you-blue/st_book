@@ -1,20 +1,10 @@
-# st_book 项目依赖包
+# st_book 项目依赖
+# 安装: pip install -r requirements.txt
 
-# 核心依赖
-openai>=1.0.0          # OpenAI API客户端
-asyncio                # 异步编程支持
-pathlib                # 路径处理
-json                   # JSON数据处理
+openai>=1.0.0
+pyyaml>=6.0
+ruamel.yaml>=0.18.0
+opencc-python-reimplemented>=0.1.7
 
-# 文本处理
-zhconv>=1.4.3          # 中文简繁转换
-difflib                # 文本相似度计算
-
-# 配置管理
-pyyaml>=6.0            # YAML配置文件解析
-
-# 可选依赖（用于GUI界面）
-tkinter                # GUI界面（Python标准库）
-
-# 开发和测试依赖
-pytest>=7.0.0          # 测试框架（可选）
+# 开发/测试
+pytest>=7.0.0

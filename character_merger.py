@@ -21,7 +21,7 @@ class CharacterMerger:
         self.output_dir = Path(self.config.get("output.roles_json_dir", "roles_json"))
         self.output_dir.mkdir(exist_ok=True)
         
-        self.cc = OpenCC('t2s.json')
+        self.cc = OpenCC('t2s')
 
         # 使用新的配置系统
         self.name_similarity_threshold = self.config.get("similarity.name_threshold", 0.85)
