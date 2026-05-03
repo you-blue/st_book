@@ -15,19 +15,23 @@ st_book/
 ├───character_extractor_llm.py  # 角色信息提取器
 ├───character_merger.py         # 角色信息合并器
 ├───character_workflow.py       # 主工作流管理器 (你的主要入口)
-├───config_template.yaml        # 配置文件模板
+├───config_gui.py               # 可视化配置界面 (可选)
+├───config_template.yaml        # 配置文件 (或模板)
 ├───create_card.py              # AI增强的角色卡生成器
 ├───project_config.py           # 项目配置加载器
 ├───README.md                   # 本文档
 ├───text_splitter.py            # 文本分割器
 ├───worldbook_extractor.py      # 世界书条目提取器
 ├───worldbook_generator.py      # AI增强的世界书生成器
+├───一键启动.bat                 # 一键启动脚本
 ├───cards/                      # 【输出】最终生成的SillyTavern角色卡
 ├───chunks/                     # (中间) 小说文本分块
 ├───character_responses/        # (中间) 提取的原始角色信息
-├───roles_json/                # (中间) 合并后的原始角色档案
-├───wb_responses/              # (中间) 提取的原始世界书条目
-└───worldbook/                 # 【输出】最终生成的结构化世界书
+├───character_responses_bad/    # (中间) 失败的角色提取
+├───character_responses_raw/    # (中间) 角色提取原始文本
+├───roles_json/                 # (中间) 合并后的原始角色档案
+├───wb_responses/               # (中间) 提取的原始世界书条目
+└───worldbook/                  # 【输出】最终生成的结构化世界书
 ```
 
 🚀 **快速开始**
@@ -40,8 +44,17 @@ pip install -r requirements.txt
 ```
 
 2️⃣ **配置设置**
+
+方式一 — 可视化界面（推荐）：
+```bash
+python config_gui.py
+```
+双击 `一键启动.bat` 也可启动。
+
+方式二 — 手动编辑：
 ```bash
 cp config_template.yaml config.yaml
+# 编辑 config_template.yaml 填入 API 密钥等配置
 ```
 
 🔧 **配置示例**
@@ -97,7 +110,11 @@ python character_workflow.py wb-generate   # 生成结构化世界书
 
 # 工具命令
 python character_workflow.py status     # 查看当前进度
+python character_workflow.py clean      # 清理所有中间和输出文件
 python character_workflow.py help       # 查看帮助信息
+
+# GUI配置界面
+python config_gui.py                    # 可视化编辑配置
 ```
 
 ⚙️ **配置说明**
@@ -113,6 +130,12 @@ python character_workflow.py help       # 查看帮助信息
 - worldbook/ - 最终世界书文件
 - roles_json/ - 中间角色数据
 - chunks/ - 分割文本块
+- character_responses/ - 角色提取原始响应
+- character_responses_bad/ - 失败的角色提取
+- character_responses_raw/ - 角色提取原始文本
+- wb_responses/ - 世界书提取响应
+
+> 以上目录均可通过 `python character_workflow.py clean` 一键清理。
 
 ❗ **故障排除**
 1. API调用失败: 检查API密钥和网络连接

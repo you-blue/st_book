@@ -463,8 +463,12 @@ def clean_all():
     dirs_to_clean = [
         Path("chunks"),
         Path("character_responses"),
+        Path("character_responses_bad"),
+        Path("character_responses_raw"),
         Path("roles_json"),
-        Path("cards")
+        Path("cards"),
+        Path("wb_responses"),
+        Path("worldbook"),
     ]
     for dir_path in dirs_to_clean:
         if dir_path.exists():
