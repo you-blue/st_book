@@ -326,6 +326,17 @@ class ConfigGUI:
             ttk.Entry(row, textvariable=var).pack(side=tk.LEFT, fill=tk.X, expand=True)
             self._output_vars[key] = var
 
+        # ── 角色筛选配置 ──
+        filter_grp = ttk.LabelFrame(f, text="角色筛选", padding=8)
+        filter_grp.pack(fill=tk.X, pady=(10, 10))
+
+        row = ttk.Frame(filter_grp)
+        row.pack(fill=tk.X, pady=2)
+        ttk.Label(row, text="保留角色数量:", width=18).pack(side=tk.LEFT)
+        self.keep_count_var = tk.IntVar(value=30)
+        ttk.Spinbox(row, from_=1, to=500, textvariable=self.keep_count_var, width=10).pack(side=tk.LEFT)
+        ttk.Label(row, text="按内容丰富度保留前N个角色", foreground="gray").pack(side=tk.LEFT, padx=(8, 0))
+
         actions = ttk.LabelFrame(f, text="快捷操作", padding=8)
         actions.pack(fill=tk.X)
         ttk.Button(actions, text="打开输出目录", command=self.open_output_dir).pack(side=tk.LEFT, padx=2)
@@ -337,20 +348,21 @@ class ConfigGUI:
         """三行排列，带悬浮提示"""
         groups = [
             ("角色卡", [
-                ("auto",       "一键全自动",  "【推荐】清理并完整运行整个制卡流程"),
+                ("auto",       "角色全自动",  "【推荐】清理并完整运行角色卡制卡流程"),
                 ("full",       "完整流程",   "不清理，直接执行完整制卡流程"),
                 ("split",      "分割",       "将小说文本分割为文本块"),
                 ("extract",    "提取",       "从文本块中提取角色信息"),
                 ("merge",      "合并",       "合并重复的角色数据"),
-                ("filter",     "筛选",       "保留前50个最大的角色文件"),
+                ("filter",     "筛选",       f"保留前{self.keep_count_var.get()}个最大的角色文件"),
                 ("create",     "制卡",       "从合并后的数据创建角色卡"),
             ]),
             ("世界书", [
-                ("wb-auto",     "一键全自动",  "【推荐】清理并完整运行世界书流程"),
+                ("wb-auto",     "世界书全自动",  "【推荐】清理并完整运行世界书流程"),
                 ("wb-extract",  "提取条目",   "步骤1: 提取世界书原始条目"),
                 ("wb-generate", "结构化生成",  "步骤2: 将原始条目升华为结构化世界书"),
             ]),
             ("通用", [
+                ("full-auto", "一键全自动", "【推荐】先运行角色全自动，再运行世界书全自动"),
                 ("status",  "状态",  "查看各处理阶段目录和文件状态"),
                 ("clean",   "清理",  "删除所有中间及最终输出文件"),
                 ("help",    "帮助",  "在日志区打印完整帮助信息"),
@@ -365,10 +377,18 @@ class ConfigGUI:
                 btn = ttk.Button(row, text=label, width=10,
                                  command=lambda m=mode: self.run_workflow(m))
                 btn.pack(side=tk.LEFT, padx=2)
-                self._tooltip(btn, desc)
+                if mode == "filter":
+                    self._filter_tip_var = tk.StringVar(
+                        value=f"保留前{self.keep_count_var.get()}个最大的角色文件")
+                    self.keep_count_var.trace_add("write",
+                        lambda *a: self._filter_tip_var.set(
+                            f"保留前{self.keep_count_var.get()}个最大的角色文件"))
+                    self._tooltip(btn, self._filter_tip_var)
+                else:
+                    self._tooltip(btn, desc)
 
     def _tooltip(self, widget, text):
-        """为控件绑定悬浮提示"""
+        """为控件绑定悬浮提示，text 可以是字符串或 tk.StringVar"""
         tw = None
         def show(event):
             nonlocal tw
@@ -379,7 +399,8 @@ class ConfigGUI:
             tw = tk.Toplevel(widget)
             tw.wm_overrideredirect(True)
             tw.wm_geometry(f"+{x}+{y}")
-            lbl = ttk.Label(tw, text=text, background="#ffffcc", relief=tk.SOLID,
+            current = text.get() if isinstance(text, tk.StringVar) else text
+            lbl = ttk.Label(tw, text=current, background="#ffffcc", relief=tk.SOLID,
                             borderwidth=1, padding=4, font=("", 9))
             lbl.pack()
         def hide(event):
@@ -522,6 +543,10 @@ class ConfigGUI:
 
         self._check_input_file()
 
+        # 角色筛选
+        char_filter = self.data.get("character_filter", {})
+        self._set_val(self.keep_count_var, char_filter.get("keep_count", 30))
+
     def save_config(self):
         """将界面值写入配置文件（保留注释和格式）"""
         self._ui_to_config()
@@ -568,6 +593,8 @@ class ConfigGUI:
         self.data.setdefault("text_processing", {})["max_chunk_chars"] = self.max_chunk_var.get()
         self.data["text_processing"]["buffer_chars"] = self.buffer_chars_var.get()
 
+        self.data.setdefault("character_filter", {})["keep_count"] = self.keep_count_var.get()
+
     def _set_val(self, var, val):
         try:
             if isinstance(var, tk.StringVar):
@@ -610,38 +637,45 @@ class ConfigGUI:
             env = os.environ.copy()
             env["VIRTUAL_ENV"] = str(script_dir / ".venv")
             env["PATH"] = str(script_dir / ".venv/Scripts") + ";" + env.get("PATH", "")
-            # Windows 中文控制台输出为 GBK，先捕获字节再解码
-            result = subprocess.run(
+            env["PYTHONUNBUFFERED"] = "1"
+            env["PYTHONIOENCODING"] = "utf-8"
+
+            # 实时读取子进程输出
+            proc = subprocess.Popen(
                 [python_exe, str(script_dir / "character_workflow.py"), mode],
-                capture_output=True, cwd=script_dir, env=env
+                cwd=script_dir, env=env,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE
             )
-            stdout = result.stdout
-            # 尝试 UTF-8 解码，失败则用 GBK
-            try:
-                text = stdout.decode("utf-8")
-            except UnicodeDecodeError:
-                text = stdout.decode("gbk", errors="replace")
 
-            if text:
-                for line in text.strip().split("\n"):
-                    if line.strip():
-                        self.log(f"  {line}")
-
-            stderr = result.stderr
-            if stderr:
+            def decode(line_bytes):
                 try:
-                    err_text = stderr.decode("utf-8")
+                    return line_bytes.decode("utf-8").rstrip("\r\n")
                 except UnicodeDecodeError:
-                    err_text = stderr.decode("gbk", errors="replace")
-                if err_text.strip():
-                    for line in err_text.strip().split("\n"):
-                        if line.strip():
-                            self.log(f"  ⚠ {line.strip()}")
-            if result.returncode == 0:
+                    return line_bytes.decode("gbk", errors="replace").rstrip("\r\n")
+
+            # 逐行读取 stdout
+            for line in iter(proc.stdout.readline, b""):
+                text = decode(line)
+                if text:
+                    self.log(f"  {text}")
+
+            # 读取剩余 stderr
+            stderr_text = ""
+            for line in iter(proc.stderr.readline, b""):
+                text = decode(line)
+                if text:
+                    self.log(f"  ⚠ {text}")
+                    stderr_text += text
+
+            proc.stdout.close()
+            proc.stderr.close()
+            returncode = proc.wait()
+
+            if returncode == 0:
                 self.log(f"✅ 工作流 [{mode}] 执行完毕")
                 self.set_status("执行完毕", "green")
             else:
-                self.log(f"❌ 工作流 [{mode}] 失败 (exit={result.returncode})")
+                self.log(f"❌ 工作流 [{mode}] 失败 (exit={returncode})")
                 self.set_status("执行失败", "red")
         except Exception as e:
             self.log(f"❌ 运行异常: {e}")

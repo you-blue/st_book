@@ -5,6 +5,7 @@
 
 import json
 import asyncio
+import re
 from pathlib import Path
 from openai import AsyncOpenAI
 from project_config import get_config
@@ -444,18 +445,60 @@ class WorldbookExtractor:
             return response_text
 
     def _fix_common_json_issues(self, json_text: str) -> str:
-        """修复常见的JSON格式问题"""
+        """修复常见的JSON格式问题，支持多层修复策略"""
         try:
-            # 移除多余的逗号
-            json_text = json_text.replace(',]', ']').replace(',}', '}')
+            # 策略1: 基础修复 - 去除多余逗号
+            text = json_text.replace(',]', ']').replace(',}', '}')
+            try:
+                json.loads(text)
+                return text
+            except json.JSONDecodeError:
+                pass
 
-            # 尝试解析修复后的JSON
-            json.loads(json_text)
-            return json_text
+            # 策略2: 移除注释 (// 和 /* */)
+            text = re.sub(r'//.*', '', text)
+            text = re.sub(r'/\*.*?\*/', '', text, flags=re.DOTALL)
 
-        except json.JSONDecodeError as e:
-            print(f"⚠️ JSON修复失败: {e}")
-            # 返回一个空的JSON数组作为fallback
+            # 策略3: 将单引号替换为双引号
+            text = re.sub(r"(?<!\\)'(.*?)(?<!\\)'", r'"\1"', text)
+
+            # 策略4: 未加引号的键名 (如 {key: value} → {"key": value})
+            text = re.sub(r'(?<!")(\b[a-zA-Z_][a-zA-Z0-9_]*\b)(?=\s*:)', r'"\1"', text)
+
+            try:
+                json.loads(text)
+                return text
+            except json.JSONDecodeError:
+                pass
+
+            # 策略5: 尝试从文本中提取完整的 [...] 或 {...} 部分
+            for pattern in [r'(\[.*?\])', r'(\{.*\})']:
+                match = re.search(pattern, text, re.DOTALL)
+                if match:
+                    candidate = match.group(1)
+                    try:
+                        json.loads(candidate)
+                        return candidate
+                    except json.JSONDecodeError:
+                        pass
+
+            # 策略6: 逐行截断修复
+            lines = text.split('\n')
+            for cut_pos in range(len(lines), 0, -1):
+                try:
+                    candidate = '\n'.join(lines[:cut_pos])
+                    candidate = candidate.rstrip(',')
+                    json.loads(candidate)
+                    return candidate
+                except json.JSONDecodeError:
+                    continue
+
+            # 所有修复策略失败，返回空数组
+            print(f"[WARN] JSON修复失败，返回空数组")
+            return '[]'
+
+        except Exception as e:
+            print(f"[WARN] JSON修复过程异常: {e}")
             return '[]'
 
     async def extract_all(self):

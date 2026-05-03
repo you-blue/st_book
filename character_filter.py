@@ -18,7 +18,7 @@ class CharacterFilter:
         self.backup_dir = Path(self.config.get("output.roles_json_dir", "roles_json")) / "filtered_out"
         
         # 从配置读取保留数量，默认50个
-        self.keep_count = int(self.config.get("character_filter.keep_count", 30))
+        self.keep_count = int(self.config.get("character_filter.keep_count", 50))
         
     def get_character_files_by_size(self) -> List[Tuple[Path, int, int]]:
         """获取所有角色文件，按文件大小排序

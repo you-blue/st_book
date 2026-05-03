@@ -5,6 +5,7 @@ SillyTavern 角色卡创建器 - AI增强版
 
 import json
 import asyncio
+import shutil
 from pathlib import Path
 from openai import AsyncOpenAI
 from project_config import get_config
@@ -179,6 +180,24 @@ class CardCreator:
 
         print("\n高质量角色卡创建完成！")
         print(f"保存位置: {self.cards_dir}")
+
+        # 保存到以小说命名的文件夹
+        self._save_to_novel_folder()
+
+    def _save_to_novel_folder(self):
+        """将角色卡复制到以小说命名的文件夹"""
+        source_file = self.config.get('input.source_file', 'a.txt')
+        novel_name = Path(source_file).stem
+        if not novel_name or novel_name == 'a':
+            novel_name = 'output'
+        dst = Path(novel_name) / "cards"
+        dst.mkdir(parents=True, exist_ok=True)
+        count = 0
+        for f in self.cards_dir.glob("*.json"):
+            shutil.copy2(f, dst / f.name)
+            count += 1
+        if count:
+            print(f"[SAVE] 角色卡已保存到: {dst}/ ({count} 个文件)")
 
 def main():
     """主函数"""

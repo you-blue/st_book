@@ -6,6 +6,7 @@
 
 import json
 import asyncio
+import shutil
 from pathlib import Path
 from collections import defaultdict
 from typing import Dict, List, Any, Optional
@@ -662,6 +663,8 @@ class WorldbookGenerator:
         except Exception as e:
             print(f"❌ 保存最终世界书失败: {e}")
 
+        self._save_to_novel_folder()
+
     # ==================== 事件驱动架构新方法 ====================
 
     async def generate_timeline_worldbook(self) -> str:
@@ -1141,6 +1144,8 @@ class WorldbookGenerator:
             print(f"  ✅ 优先级排序: 规则层(0-20) > 时间线(21) > 实体(30-50) > 事件(60-120)")
             print("="*80)
 
+            self._save_to_novel_folder()
+
             return str(output_file)
 
         except Exception as e:
@@ -1515,11 +1520,28 @@ class WorldbookGenerator:
             print(f"  - 重要事件: {len(event_entries)}")
             print("="*60)
 
+            self._save_to_novel_folder()
+
             return str(output_file)
 
         except Exception as e:
             print(f"❌ 保存事件驱动世界书失败: {e}")
             return ""
+
+    def _save_to_novel_folder(self):
+        """将世界书文件复制到以小说命名的文件夹"""
+        source_file = self.config.get('input.source_file', 'a.txt')
+        novel_name = Path(source_file).stem
+        if not novel_name or novel_name == 'a':
+            novel_name = 'output'
+        dst = Path(novel_name) / "worldbook"
+        dst.mkdir(parents=True, exist_ok=True)
+        count = 0
+        for f in self.output_dir.glob("*.json"):
+            shutil.copy2(f, dst / f.name)
+            count += 1
+        if count:
+            print(f"[SAVE] 世界书已保存到: {dst}/ ({count} 个文件)")
 
 def main():
     """主函数"""
