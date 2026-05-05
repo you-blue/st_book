@@ -13,17 +13,24 @@ import subprocess
 
 import shutil
 
-# 自动使用虚拟环境：确保使用 .venv 中的 python 解释器
-_SCRIPT_DIR = Path(__file__).resolve().parent
-_VENV_PYTHON = _SCRIPT_DIR / ".venv" / "Scripts" / "python.exe"
-if _VENV_PYTHON.exists():
-    _VENV_PYTHON = _VENV_PYTHON.resolve()
-    current = Path(sys.executable).resolve() if sys.executable else None
-    if current and str(current).lower() != str(_VENV_PYTHON).lower():
-        python_exe = str(_VENV_PYTHON)
-        if "pythonw.exe" in current.name:
-            python_exe = str(_SCRIPT_DIR / ".venv" / "Scripts" / "pythonw.exe")
-        sys.exit(subprocess.call([python_exe] + sys.argv, cwd=_SCRIPT_DIR, env={**os.environ, "PYTHONIOENCODING": "utf-8"}))
+# 强制 UTF-8 输出（exe 打包环境下控制台可能为 GBK）
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
+# 自动使用虚拟环境（仅在非 PyInstaller 打包环境中生效）
+if not getattr(sys, 'frozen', False):
+    _SCRIPT_DIR = Path(__file__).resolve().parent
+    _VENV_PYTHON = _SCRIPT_DIR / ".venv" / "Scripts" / "python.exe"
+    if _VENV_PYTHON.exists():
+        _VENV_PYTHON = _VENV_PYTHON.resolve()
+        current = Path(sys.executable).resolve() if sys.executable else None
+        if current and str(current).lower() != str(_VENV_PYTHON).lower():
+            python_exe = str(_VENV_PYTHON)
+            if "pythonw.exe" in current.name:
+                python_exe = str(_SCRIPT_DIR / ".venv" / "Scripts" / "pythonw.exe")
+            sys.exit(subprocess.call([python_exe] + sys.argv, cwd=_SCRIPT_DIR, env={**os.environ, "PYTHONIOENCODING": "utf-8"}))
 
 def show_help():
     """显示帮助信息"""
@@ -577,73 +584,67 @@ def clean_intermediate_files():
     
     print("中间文件清理完成！")
 
+def run_workflow_mode(mode: str) -> bool:
+    """
+    按名称运行工作流模式。可被外部代码直接调用（导入）。
+
+    Args:
+        mode: 工作流模式名（auto, full, split, extract, merge, filter, create,
+              wb-auto, wb-extract, wb-generate, status, clean, help 等）
+
+    Returns:
+        True 表示成功，False 表示失败或未知模式
+    """
+    mode = mode.lower()
+
+    if mode == "auto":
+        run_auto_workflow()
+        return True
+    elif mode == "split":
+        return split_text()
+    elif mode == "extract":
+        return extract_characters()
+    elif mode == "merge":
+        return merge_characters()
+    elif mode == "filter":
+        return filter_characters()
+    elif mode == "full":
+        return run_full_workflow()
+    elif mode == "create":
+        return create_character_cards()
+    elif mode == "wb-extract":
+        return extract_worldbook()
+    elif mode == "wb-classify":
+        return classify_worldbook()
+    elif mode == "wb-generate":
+        return generate_worldbook()
+    elif mode == "wb-auto":
+        run_wb_auto_workflow()
+        return True
+    elif mode == "status":
+        show_status()
+        return True
+    elif mode == "clean":
+        clean_all()
+        return True
+    elif mode == "help":
+        show_help()
+        return True
+    else:
+        print(f"未知命令: {mode}")
+        show_help()
+        return False
+
+
 def main():
     """主函数"""
     if len(sys.argv) < 2:
         show_help()
         return
-    
+
     command = sys.argv[1].lower()
+    run_workflow_mode(command)
 
-    if command == "auto":
-        # 一键全自动
-        run_auto_workflow()
-
-    elif command == "split":
-        # 分割文本
-        split_text()
-
-    elif command == "extract":
-        # 提取角色
-        extract_characters()
-
-    elif command == "merge":
-        # 合并角色
-        merge_characters()
-
-    elif command == "filter":
-        # 筛选角色
-        filter_characters()
-
-    elif command == "full":
-        # 完整流程
-        run_full_workflow()
-
-    elif command == "create":
-        # 创建角色卡
-        create_character_cards()
-
-    elif command == "wb-extract":
-        # 提取世界书
-        extract_worldbook()
-
-    elif command == "wb-classify":
-        # 分类世界书数据
-        classify_worldbook()
-
-    elif command == "wb-generate":
-        # 生成世界书
-        generate_worldbook()
-
-    elif command == "wb-auto":
-        # 一键生成世界书
-        run_wb_auto_workflow()
-
-    elif command == "status":
-        # 显示状态
-        show_status()
-
-    elif command == "clean":
-        # 清理文件
-        clean_all()
-
-    elif command == "help":
-        # 显示帮助
-        show_help()
-
-    else:
-        print(f"未知命令: {command}")
-        show_help()
 
 if __name__ == "__main__":
     main()

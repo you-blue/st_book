@@ -34,7 +34,17 @@ class ConfigGUI:
         master.title("st_book 配置管理")
         master.geometry("850x780")
 
-        self.config_path = Path("config.yaml")
+        # 确定基础目录：用户工作目录（首次运行会在此创建 config.yaml）
+        if getattr(sys, 'frozen', False):
+            self._base_dir = Path(sys.executable).parent.resolve()
+        else:
+            self._base_dir = Path(__file__).parent.resolve()
+        # 数据目录：onefile 模式下 config_template.yaml 解压在 sys._MEIPASS
+        if getattr(sys, 'frozen', False):
+            self._data_dir = Path(sys._MEIPASS)
+        else:
+            self._data_dir = self._base_dir
+        self.config_path = self._base_dir / "config.yaml"
         self.data = {}  # 当前配置数据
 
         # 模式名 → 中文描述映射
@@ -60,7 +70,7 @@ class ConfigGUI:
         style.configure("Header.TLabel", font=("微软雅黑", 9, "bold"))
 
         self._build_ui()
-        self.load_config()
+        self._init_config()
 
     # ── UI 构建 ──────────────────────────────────────────────
 
@@ -484,23 +494,36 @@ class ConfigGUI:
 
     # ── 配置读写 ─────────────────────────────────────────────
 
-    def load_config(self):
-        """加载 config.yaml，不存在时从模板复制"""
+    def _init_config(self):
+        """初始化配置：首次运行自动从模板创建 config.yaml"""
         if self.config_path.exists():
             self._load_from_path(self.config_path)
             self.log(f"✅ 已加载配置: {self.config_path}")
             self.set_status(f"已加载: {self.config_path.name}", "green")
             return
 
-        tmpl = Path("config_template.yaml")
+        tmpl = self._data_dir / "config_template.yaml"
         if tmpl.exists():
             shutil.copy2(tmpl, self.config_path)
             self._load_from_path(self.config_path)
-            self.log(f"✅ 已从 {tmpl.name} 复制并加载 {self.config_path}")
+            self.log(f"✅ 已从模板创建配置文件: {self.config_path}")
             self.set_status(f"已创建: {self.config_path.name}", "orange")
         else:
             self.log(f"❌ 未找到 {self.config_path} 或 {tmpl.name}")
             self.set_status("未找到配置文件", "red")
+
+    def load_config(self):
+        """文件选择器：从文件夹选取配置文件加载"""
+        path = filedialog.askopenfilename(
+            title="选择配置文件",
+            filetypes=[("YAML 文件", "*.yaml *.yml"), ("所有文件", "*.*")],
+            initialdir=self._base_dir
+        )
+        if path:
+            self.config_path = Path(path)
+            self._load_from_path(self.config_path)
+            self.log(f"✅ 已加载配置: {self.config_path}")
+            self.set_status(f"已加载: {self.config_path.name}", "green")
 
     def reload_config(self):
         """从磁盘重新加载 config.yaml（丢弃未保存的更改）"""
@@ -648,56 +671,71 @@ class ConfigGUI:
         self.log(f"▶ 开始运行: {mode_name}")
         threading.Thread(target=self._run_workflow_thread, args=(mode,), daemon=True).start()
 
-    def _get_python_exe(self):
-        """获取 venv 中 python.exe 的绝对路径"""
-        exe = sys.executable
-        if not exe:
-            # 回退：从当前 venv 路径查找
-            exe = str(Path(__file__).parent / ".venv" / "Scripts" / "python.exe")
-        elif exe.endswith("pythonw.exe"):
-            exe = exe.replace("pythonw.exe", "python.exe")
-        # 确保返回绝对路径
-        return str(Path(exe).resolve())
+    def _workflow_dir(self) -> Path:
+        """返回工作目录（配置文件所在目录）"""
+        if getattr(sys, 'frozen', False):
+            return Path(sys.executable).parent.resolve()
+        return Path(__file__).parent.resolve()
 
     def _run_workflow_thread(self, mode):
         try:
             mode_name = self._mode_names.get(mode, mode)
             self.set_status(f"正在{mode_name}...", "blue")
-            python_exe = self._get_python_exe()
-            script_dir = Path(__file__).parent.resolve()
 
-            # 显式传入环境变量，确保子进程使用 venv
-            env = os.environ.copy()
-            env["VIRTUAL_ENV"] = str(script_dir / ".venv")
-            env["PATH"] = str(script_dir / ".venv/Scripts") + ";" + env.get("PATH", "")
-            # Windows 中文控制台输出为 GBK，先捕获字节再解码
-            result = subprocess.run(
-                [python_exe, str(script_dir / "character_workflow.py"), mode],
-                capture_output=True, cwd=script_dir, env=env
-            )
-            stdout = result.stdout
-            # 尝试 UTF-8 解码，失败则用 GBK
-            try:
-                text = stdout.decode("utf-8")
-            except UnicodeDecodeError:
-                text = stdout.decode("gbk", errors="replace")
+            if getattr(sys, 'frozen', False):
+                # 打包环境：直接调用工作流函数（捕获 stdout/stderr）
+                import io
+                from contextlib import redirect_stdout, redirect_stderr
+                from character_workflow import run_workflow_mode
+
+                buf = io.StringIO()
+                with redirect_stdout(buf), redirect_stderr(buf):
+                    result_val = run_workflow_mode(mode)
+                text = buf.getvalue()
+                returncode = 0 if result_val is not False else 1
+            else:
+                # 源码环境：python character_workflow.py
+                script_dir = self._workflow_dir()
+                python_exe = sys.executable
+                if not python_exe:
+                    python_exe = str(script_dir / ".venv" / "Scripts" / "python.exe")
+                elif python_exe.endswith("pythonw.exe"):
+                    python_exe = python_exe.replace("pythonw.exe", "python.exe")
+                python_exe = str(Path(python_exe).resolve())
+
+                env = os.environ.copy()
+                env["VIRTUAL_ENV"] = str(script_dir / ".venv")
+                env["PATH"] = str(script_dir / ".venv/Scripts") + ";" + env.get("PATH", "")
+                result = subprocess.run(
+                    [python_exe, str(script_dir / "character_workflow.py"), mode],
+                    capture_output=True, cwd=script_dir, env=env
+                )
+                stdout = result.stdout
+                # 尝试 UTF-8 解码，失败则用 GBK
+                try:
+                    text = stdout.decode("utf-8")
+                except UnicodeDecodeError:
+                    text = stdout.decode("gbk", errors="replace")
+                returncode = result.returncode
 
             if text:
                 for line in text.strip().split("\n"):
                     if line.strip():
                         self.log(f"  {line}")
 
-            stderr = result.stderr
-            if stderr:
-                try:
-                    err_text = stderr.decode("utf-8")
-                except UnicodeDecodeError:
-                    err_text = stderr.decode("gbk", errors="replace")
-                if err_text.strip():
-                    for line in err_text.strip().split("\n"):
-                        if line.strip():
-                            self.log(f"  ⚠ {line.strip()}")
-            if result.returncode == 0:
+            # 非打包模式单独处理 stderr
+            if not getattr(sys, 'frozen', False):
+                stderr = result.stderr
+                if stderr:
+                    try:
+                        err_text = stderr.decode("utf-8")
+                    except UnicodeDecodeError:
+                        err_text = stderr.decode("gbk", errors="replace")
+                    if err_text.strip():
+                        for line in err_text.strip().split("\n"):
+                            if line.strip():
+                                self.log(f"  ⚠ {line.strip()}")
+            if returncode == 0:
                 self.log(f"✅ {mode_name} 执行完毕")
                 self.set_status("执行完毕", "green")
             else:
@@ -719,12 +757,22 @@ class ConfigGUI:
         confirm = messagebox.askyesno("确认清理", "确定要清理所有中间文件和输出文件吗？\n此操作不可撤销！")
         if confirm:
             try:
-                result = subprocess.run(
-                    [sys.executable, "character_workflow.py", "clean"],
-                    capture_output=True, text=True, encoding="utf-8", errors="replace"
-                )
-                if result.stdout:
-                    for line in result.stdout.strip().split("\n"):
+                if getattr(sys, 'frozen', False):
+                    from character_workflow import clean_all
+                    import io
+                    from contextlib import redirect_stdout
+                    buf = io.StringIO()
+                    with redirect_stdout(buf):
+                        clean_all()
+                    text = buf.getvalue()
+                else:
+                    result = subprocess.run(
+                        [sys.executable, "character_workflow.py", "clean"],
+                        capture_output=True, text=True, encoding="utf-8", errors="replace"
+                    )
+                    text = result.stdout
+                if text:
+                    for line in text.strip().split("\n"):
                         if line.strip():
                             self.log(f"  {line}")
                 self.log("✅ 清理完成")
