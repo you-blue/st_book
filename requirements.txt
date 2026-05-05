@@ -8,5 +8,3 @@ opencc-python-reimplemented>=0.1.7
 
 # 开发/测试
 pytest>=7.0.0
-
-opencc

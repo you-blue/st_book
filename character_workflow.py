@@ -8,22 +8,8 @@ import json
 from pathlib import Path
 from typing import Dict, List
 import time
-import os
-import subprocess
 
 import shutil
-
-# 自动使用虚拟环境：确保使用 .venv 中的 python 解释器
-_SCRIPT_DIR = Path(__file__).resolve().parent
-_VENV_PYTHON = _SCRIPT_DIR / ".venv" / "Scripts" / "python.exe"
-if _VENV_PYTHON.exists():
-    _VENV_PYTHON = _VENV_PYTHON.resolve()
-    current = Path(sys.executable).resolve() if sys.executable else None
-    if current and str(current).lower() != str(_VENV_PYTHON).lower():
-        python_exe = str(_VENV_PYTHON)
-        if "pythonw.exe" in current.name:
-            python_exe = str(_SCRIPT_DIR / ".venv" / "Scripts" / "pythonw.exe")
-        sys.exit(subprocess.call([python_exe] + sys.argv, cwd=_SCRIPT_DIR, env={**os.environ, "PYTHONIOENCODING": "utf-8"}))
 
 def show_help():
     """显示帮助信息"""
@@ -31,21 +17,20 @@ def show_help():
 角色工作流管理器 - 使用说明
 
 **角色卡制作**
-  python character_workflow.py auto        - [推荐] 角色全自动 (清理并运行角色卡流程)
+  python character_workflow.py auto        - [推荐] 一键全自动制卡 (清理并完整运行)
   python character_workflow.py full        - 执行完整流程 (不清理)
   python character_workflow.py split       - 分割小说文本为文本块
   python character_workflow.py extract     - 从文本块提取角色信息
   python character_workflow.py merge       - 合并重复的角色数据
-  python character_workflow.py filter      - 筛选角色，保留内容最丰富的文件
+  python character_workflow.py filter      - 筛选角色，保留前50个最大的文件
   python character_workflow.py create      - 从合并后的数据创建角色卡
 
 **世界书制作**
-  python character_workflow.py wb-auto      - [推荐] 世界书全自动 (清理并运行世界书流程)
+  python character_workflow.py wb-auto      - [推荐] 一键全自动生成世界书 (清理并完整运行)
   python character_workflow.py wb-extract   - [步骤1] 提取世界书原始条目
   python character_workflow.py wb-generate  - [步骤2] 将原始条目升华为结构化世界书
 
 **通用命令**
-  python character_workflow.py full-auto   - [推荐] 一键全自动 (角色卡+世界书完整运行)
   python character_workflow.py status      - 显示工作流状态
   python character_workflow.py clean       - 清理所有中间及输出文件
   python character_workflow.py help        - 显示此帮助信息
@@ -87,9 +72,7 @@ def show_status():
     # 检查工作流完成度
     print(f"\n工作流完成度:")
 
-    from project_config import get_config
-    source_file = get_config().get('input.source_file', '')
-    novel_exist = Path(source_file).exists() if source_file else False
+    novel_exist = Path("a.txt").exists()
     chunks_exist = Path("chunks").exists() and list(Path("chunks").glob("chunk_*.txt"))
     extracted_exist = Path("character_responses").exists() and list(Path("character_responses").glob("*.json"))
     merged_exist = Path("roles_json").exists() and list(Path("roles_json").glob("*.json"))
@@ -110,7 +93,7 @@ def show_status():
     # 推荐下一步操作
     print(f"\n推荐操作:")
     if not novel_exist:
-        print("  需要先在 config.yaml 的 input.source_file 中配置小说文件路径")
+        print("  需要先准备小说文件 a.txt")
     elif not chunks_exist:
         print("  运行: python character_workflow.py split")
     elif not extracted_exist:
@@ -187,7 +170,7 @@ def create_character_cards():
         return False
 
 def filter_characters():
-    """筛选角色，保留内容最丰富的文件"""
+    """筛选角色，保留前50个最大的文件"""
     print("开始筛选角色...")
     try:
         from character_filter import CharacterFilter
@@ -232,13 +215,13 @@ def classify_worldbook():
         success = classifier.classify_all()
 
         if success:
-            print("[OK] 世界书数据分类完成")
+            print("✅ 世界书数据分类完成")
             return True
         else:
-            print("[ERR] 世界书数据分类失败")
+            print("❌ 世界书数据分类失败")
             return False
     except Exception as e:
-        print(f"[ERR] 世界书数据分类过程出错: {e}")
+        print(f"❌ 世界书数据分类过程出错: {e}")
         return False
 
 def generate_worldbook():
@@ -249,9 +232,9 @@ def generate_worldbook():
     from pathlib import Path
     classified_dir = Path("wb_responses/classified")
     if not classified_dir.exists() or not any(classified_dir.glob("classified_*.json")):
-        print("[WARN] 未找到分类数据，先执行分类步骤...")
+        print("⚠️ 未找到分类数据，先执行分类步骤...")
         if not classify_worldbook():
-            print("[ERR] 分类步骤失败，无法继续生成")
+            print("❌ 分类步骤失败，无法继续生成")
             return False
 
     try:
@@ -267,7 +250,7 @@ def generate_worldbook():
         rules_mode = config.get('world_rules.enable_extraction', True)
 
         if event_mode and rules_mode:
-            print("[ARCH] 使用三层架构模式生成世界书（规则层+时间线层+事件层）...")
+            print("🏗️ 使用三层架构模式生成世界书（规则层+时间线层+事件层）...")
             # 三层架构模式：需要实现完整的三层生成流程
             try:
                 async def generate_layered():
@@ -296,20 +279,20 @@ def generate_worldbook():
                     output_file = generator.save_layered_worldbook(
                         rule_summaries, timeline_content, entity_summaries, []  # 暂时不处理事件条目
                     )
-                    print(f"[OK] 三层架构世界书生成完成: {output_file}")
+                    print(f"✅ 三层架构世界书生成完成: {output_file}")
                     return output_file
 
                 asyncio.run(generate_layered())
 
             except Exception as e:
-                print(f"[ERR] 三层架构模式失败，回退到事件驱动模式: {e}")
+                print(f"❌ 三层架构模式失败，回退到事件驱动模式: {e}")
                 asyncio.run(generator.generate_timeline_worldbook())
 
         elif event_mode:
-            print("[RUN] 使用事件驱动模式生成世界书...")
+            print("🚀 使用事件驱动模式生成世界书...")
             asyncio.run(generator.generate_timeline_worldbook())
         else:
-            print("[BOOK] 使用传统模式生成世界书...")
+            print("📚 使用传统模式生成世界书...")
             asyncio.run(generator.generate_worldbook())
 
         print("结构化世界书生成完成！")
@@ -380,10 +363,11 @@ def clean_worldbook_files():
     """清理世界书相关的文件和目录"""
     print("清理世界书相关目录...")
     dirs_to_clean = [
-        Path("chunks"),
+        Path("chunks"),           # 添加chunks目录清理
         Path("wb_responses"),
         Path("wb_raw_responses"),
         Path("wb_bad_chunks"),
+        Path("worldbook")
     ]
     for dir_path in dirs_to_clean:
         if dir_path.exists():
@@ -429,11 +413,6 @@ def run_wb_auto_workflow():
     # 显示最终统计
     show_wb_final_stats()
 
-    try:
-        input("\n按 Enter 键退出...")
-    except (EOFError, OSError):
-        pass
-
 def show_wb_final_stats():
     """显示世界书最终统计信息"""
     print("\n世界书统计:")
@@ -465,80 +444,6 @@ def show_wb_final_stats():
     if Path("worldbook").exists():
         print(f"  输出位置: worldbook/ 目录")
 
-    from project_config import get_config
-    source_file = get_config().get('input.source_file', 'a.txt')
-    novel_name = Path(source_file).stem
-    if novel_name and novel_name != 'a':
-        output_dir = Path(novel_name)
-        if output_dir.exists() and (output_dir / "worldbook").exists():
-            saved_wb = len(list(output_dir.glob("worldbook/*.json")))
-            print(f"  已保存到 [{novel_name}/worldbook/]: {saved_wb} 个文件")
-
-def run_full_auto_workflow():
-    """运行一键全自动：角色卡 + 世界书"""
-    print("="*60)
-    print("开始执行一键全自动流程（角色卡 + 世界书）")
-    print("="*60)
-
-    # 清理所有中间文件
-    clean_all()
-
-    # ── 角色卡流程 ──
-    print("\n" + "="*60)
-    print("【阶段1】角色卡制作")
-    print("="*60)
-    if not split_text():
-        print("工作流中断：文本分割失败")
-        return
-    if not extract_characters():
-        print("工作流中断：角色提取失败")
-        return
-    if not merge_characters():
-        print("工作流中断：角色合并失败")
-        return
-    if not filter_characters():
-        print("工作流中断：角色筛选失败")
-        return
-    if not create_character_cards():
-        print("工作流中断：角色卡创建失败")
-        return
-    print("\n" + "="*60)
-    print("角色卡制作完成！")
-    print("="*60)
-    show_final_stats()
-
-    # ── 世界书流程（复用已分割的文本块）──
-    print("\n" + "="*60)
-    print("【阶段2】世界书制作")
-    print("="*60)
-
-    # 只清理世界书相关中间文件，保留 chunks
-    for d in [Path("wb_responses"), Path("wb_raw_responses"), Path("wb_bad_chunks")]:
-        if d.exists():
-            shutil.rmtree(d)
-            print(f"已删除目录: {d}")
-
-    if not extract_worldbook():
-        print("工作流中断：世界书提取失败")
-        return
-    if not generate_worldbook():
-        print("工作流中断：世界书生成失败")
-        return
-    print("\n" + "="*60)
-    print("世界书制作完成！")
-    print("="*60)
-    show_wb_final_stats()
-
-    print("\n" + "="*60)
-    print("🎉 一键全自动流程全部完成！")
-    print("="*60)
-
-    try:
-        input("\n按 Enter 键退出...")
-    except (EOFError, OSError):
-        pass
-
-
 def run_auto_workflow():
     """运行一键全自动工作流"""
     print("="*60)
@@ -561,8 +466,8 @@ def clean_all():
         Path("character_responses_bad"),
         Path("character_responses_raw"),
         Path("roles_json"),
-        Path("wb_responses"),
         Path("cards"),
+        Path("wb_responses"),
         Path("worldbook"),
     ]
     for dir_path in dirs_to_clean:
@@ -599,7 +504,7 @@ def run_full_workflow():
         return False
 
     # 步骤3: 筛选角色
-    print("\n步骤3: 筛选角色，保留内容最丰富的文件")
+    print("\n步骤3: 筛选角色，保留前50个最大的文件")
     if not filter_characters():
         print("工作流中断：角色筛选失败")
         return False
@@ -616,15 +521,10 @@ def run_full_workflow():
 
     # 显示最终统计
     show_final_stats()
-
-    try:
-        input("\n按 Enter 键退出...")
-    except (EOFError, OSError):
-        pass
     return True
 
 def show_final_stats():
-    """显示角色卡流程最终统计信息"""
+    """显示最终统计信息"""
     print("\n最终统计:")
     
     # 统计各阶段的文件数量
@@ -637,22 +537,31 @@ def show_final_stats():
     print(f"  提取角色: {extracted_count} 个")
     print(f"  合并角色: {merged_count} 个")
     print(f"  角色卡: {cards_count} 个")
-
-    # 显示小说命名文件夹信息
-    from project_config import get_config
-    source_file = get_config().get('input.source_file', 'a.txt')
-    novel_name = Path(source_file).stem
-    if novel_name and novel_name != 'a':
-        output_dir = Path(novel_name)
-        if output_dir.exists():
-            saved_cards = len(list(output_dir.glob("cards/*.json"))) if (output_dir / "cards").exists() else 0
-            saved_wb = len(list(output_dir.glob("worldbook/*.json"))) if (output_dir / "worldbook").exists() else 0
-            print(f"  已保存到 [{novel_name}/]: 角色卡 {saved_cards} 个, 世界书 {saved_wb} 个")
     
     # 计算处理效率
     if chunks_count > 0 and merged_count > 0:
         efficiency = merged_count / chunks_count
         print(f"  处理效率: 每个文本块平均提取 {efficiency:.2f} 个角色")
+
+def clean_intermediate_files():
+    """清理中间文件"""
+    print("清理中间文件...")
+    
+    # 清理character_responses目录
+    responses_dir = Path("character_responses")
+    if responses_dir.exists():
+        for file in responses_dir.glob("*.json"):
+            file.unlink()
+            print(f"删除: {file}")
+        
+        # 如果目录为空，删除目录
+        try:
+            responses_dir.rmdir()
+            print(f"删除目录: {responses_dir}")
+        except:
+            pass
+    
+    print("中间文件清理完成！")
 
 def main():
     """主函数"""
@@ -662,12 +571,8 @@ def main():
     
     command = sys.argv[1].lower()
 
-    if command == "full-auto":
-        # 一键全自动（角色卡 + 世界书）
-        run_full_auto_workflow()
-
-    elif command == "auto":
-        # 一键全自动制卡
+    if command == "auto":
+        # 一键全自动
         run_auto_workflow()
 
     elif command == "split":

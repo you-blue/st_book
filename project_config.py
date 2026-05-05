@@ -171,6 +171,164 @@ def reload_config():
     global _global_config
     _global_config = ProjectConfig()
 
+    def load_yaml_config(self, config_path: Path) -> Dict[str, Any]:
+        """加载YAML配置文件"""
+        try:
+            import yaml
+            with open(config_path, 'r', encoding='utf-8') as f:
+                return yaml.safe_load(f) or {}
+        except ImportError:
+            print("警告: 未安装yaml库，使用默认配置")
+            return {}
+        except Exception as e:
+            print(f"警告: YAML解析失败: {e}")
+            return {}
+
+        # 默认配置（如果config.yaml不存在）
+        default_config = {
+            "project": {
+                "name": "testbook",
+                "title": "测试世界书",
+                "description": "基于AI智能优化生成的高质量世界书",
+                "author": "AI智能优化生成",
+                "version": "1.0"
+            },
+            "worldbook": {
+                "name_template": "{title}-高质量世界书",
+                "filename_template": "{name}-高质量世界书.json",
+                "world_reference": "{title}世界",
+                "concept_reference": "{title}世界观中的重要概念"
+            },
+            "paths": {
+                "input_file": "mrly.txt",
+                "chunk_output_dir": "chunks",
+                "character_responses_dir": "character_responses",
+                "roles_json_dir": "roles_json",
+                "cards_dir": "cards",
+                "worldbook_dir": "worldbook",
+                "cache_dir": "cache",
+                "logs_dir": "logs"
+            },
+            "text_splitting": {
+                "max_chunk_chars": 30000,
+                "buffer_chars": 200,
+                "chapter_patterns": [
+                    "第[一二三四五六七八九十百千万\\d]+章",
+                    "第[一二三四五六七八九十百千万\\d]+节",
+                    "第[一二三四五六七八九十百千万\\d]+回"
+                ]
+            },
+            "character_extraction": {
+                "similarity_threshold": 0.7,
+                "merge_similar_names": True,
+                "max_features_per_character": 5,
+                "max_dialogues_per_character": 3
+            },
+            "processing": {
+                "similarity_threshold_name": 0.95,
+                "similarity_threshold_content": 0.85,
+                "min_content_length": 20,
+                "max_entries": 2000
+            }
+        }
+        
+        if config_path.exists():
+            try:
+                import yaml
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    loaded_config = yaml.safe_load(f)
+                # 合并配置
+                self._merge_config(default_config, loaded_config)
+            except ImportError:
+                print("警告: 未安装yaml库，使用默认配置")
+            except Exception as e:
+                print(f"警告: 配置文件加载失败，使用默认配置: {e}")
+        
+        return default_config
+    
+    def _merge_config(self, default: dict, loaded: dict):
+        """递归合并配置"""
+        for key, value in loaded.items():
+            if key in default:
+                if isinstance(default[key], dict) and isinstance(value, dict):
+                    self._merge_config(default[key], value)
+                else:
+                    default[key] = value
+            else:
+                default[key] = value
+    
+    def get(self, key_path: str, default=None):
+        """获取配置值，支持点号路径"""
+        keys = key_path.split('.')
+        value = self.config
+        
+        for key in keys:
+            if isinstance(value, dict) and key in value:
+                value = value[key]
+            else:
+                return default
+        
+        return value
+    
+    def get_project_name(self) -> str:
+        """获取项目名称"""
+        return str(self.get('project.name', 'testbook'))
+
+    def get_project_title(self) -> str:
+        """获取项目标题"""
+        return str(self.get('project.title', '测试世界书'))
+    
+    def get_worldbook_name(self) -> str:
+        """获取世界书名称"""
+        template = str(self.get('worldbook.name_template', '{title}-高质量世界书'))
+        return template.format(
+            name=self.get_project_name(),
+            title=self.get_project_title()
+        )
+
+    def get_worldbook_filename(self) -> str:
+        """获取世界书文件名"""
+        template = str(self.get('worldbook.filename_template', '{name}-高质量世界书.json'))
+        return template.format(
+            name=self.get_project_name(),
+            title=self.get_project_title()
+        )
+
+    def get_world_reference(self) -> str:
+        """获取世界引用名称"""
+        template = str(self.get('worldbook.world_reference', '{title}世界'))
+        return template.format(
+            name=self.get_project_name(),
+            title=self.get_project_title()
+        )
+
+    def get_concept_reference(self) -> str:
+        """获取概念引用名称"""
+        template = str(self.get('worldbook.concept_reference', '{title}世界观中的重要概念'))
+        return template.format(
+            name=self.get_project_name(),
+            title=self.get_project_title()
+        )
+    
+    def save_config(self):
+        """保存配置到文件"""
+        try:
+            import yaml
+            with open(self.config_file, 'w', encoding='utf-8') as f:
+                yaml.dump(self.config, f, default_flow_style=False, allow_unicode=True)
+        except ImportError:
+            # 如果没有yaml，保存为JSON
+            json_file = self.config_file.replace('.yaml', '.json')
+            with open(json_file, 'w', encoding='utf-8') as f:
+                json.dump(self.config, f, ensure_ascii=False, indent=2)
+
+# 全局配置实例
+config = ProjectConfig()
+
+def get_config() -> ProjectConfig:
+    """获取全局配置实例"""
+    return config
+
 if __name__ == "__main__":
     # 测试新的配置系统
     cfg = get_config()
