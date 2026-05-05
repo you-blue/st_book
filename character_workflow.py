@@ -8,8 +8,22 @@ import json
 from pathlib import Path
 from typing import Dict, List
 import time
+import os
+import subprocess
 
 import shutil
+
+# 自动使用虚拟环境：确保使用 .venv 中的 python 解释器
+_SCRIPT_DIR = Path(__file__).resolve().parent
+_VENV_PYTHON = _SCRIPT_DIR / ".venv" / "Scripts" / "python.exe"
+if _VENV_PYTHON.exists():
+    _VENV_PYTHON = _VENV_PYTHON.resolve()
+    current = Path(sys.executable).resolve() if sys.executable else None
+    if current and str(current).lower() != str(_VENV_PYTHON).lower():
+        python_exe = str(_VENV_PYTHON)
+        if "pythonw.exe" in current.name:
+            python_exe = str(_SCRIPT_DIR / ".venv" / "Scripts" / "pythonw.exe")
+        sys.exit(subprocess.call([python_exe] + sys.argv, cwd=_SCRIPT_DIR, env={**os.environ, "PYTHONIOENCODING": "utf-8"}))
 
 def show_help():
     """显示帮助信息"""

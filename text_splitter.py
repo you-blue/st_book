@@ -203,8 +203,8 @@ class TextSplitter:
         # 生成映射文件（包含时序元数据）
         self.generate_mapping(chunks, method, chapter_info)
         
-        print(f"\n="*60)
-        print(f"文本分割完成！")
+        print("\n" + "="*60)
+        print("文本分割完成！")
         print(f"生成文本块: {len(chunks)} 个")
         print(f"保存位置: {self.output_dir}")
         print(f"平均长度: {sum(len(chunk) for chunk in chunks) // len(chunks):,} 字符")

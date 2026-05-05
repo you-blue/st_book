@@ -37,6 +37,24 @@ class ConfigGUI:
         self.config_path = Path("config.yaml")
         self.data = {}  # 当前配置数据
 
+        # 模式名 → 中文描述映射
+        self._mode_names = {
+            "full-auto": "一键全自动（角色卡+世界书）",
+            "auto":  "角色全自动",
+            "full":  "完整流程",
+            "split": "文本分割",
+            "extract": "角色提取",
+            "merge": "角色合并",
+            "filter": "角色筛选",
+            "create": "制卡",
+            "wb-auto": "世界书全自动",
+            "wb-extract": "世界书提取",
+            "wb-generate": "世界书生成",
+            "status": "状态检查",
+            "clean": "清理文件",
+            "help": "帮助信息",
+        }
+
         style = ttk.Style()
         style.configure("Title.TLabel", font=("微软雅黑", 10, "bold"))
         style.configure("Header.TLabel", font=("微软雅黑", 9, "bold"))
@@ -58,8 +76,8 @@ class ConfigGUI:
         ttk.Button(top_bar, text="🔄 重新加载", command=self.reload_config).pack(side=tk.LEFT, padx=2)
         ttk.Separator(top_bar, orient=tk.VERTICAL).pack(side=tk.LEFT, padx=6, fill=tk.Y)
         ttk.Button(top_bar, text="帮助", command=self.show_help).pack(side=tk.LEFT, padx=2)
-        self.status_label = ttk.Label(top_bar, text="就绪", foreground="gray")
-        self.status_label.pack(side=tk.RIGHT, padx=5)
+        self.status_label = ttk.Label(top_bar, text="就绪", foreground="gray", width=40, anchor=tk.E)
+        self.status_label.pack(side=tk.RIGHT, padx=5, fill=tk.X, expand=True)
         main_panel.add(top_bar, weight=0)
 
         # ── Notebook 选项卡 ──
@@ -326,6 +344,20 @@ class ConfigGUI:
             ttk.Entry(row, textvariable=var).pack(side=tk.LEFT, fill=tk.X, expand=True)
             self._output_vars[key] = var
 
+        # 角色筛选数量配置
+        filter_frame = ttk.LabelFrame(f, text="角色筛选配置", padding=8)
+        filter_frame.pack(fill=tk.X, pady=(0, 10))
+        row = ttk.Frame(filter_frame)
+        row.pack(fill=tk.X, pady=4)
+        ttk.Label(row, text="保留角色数量:", width=18).pack(side=tk.LEFT)
+        self.keep_count_var = tk.IntVar(value=30)
+        ttk.Spinbox(row, from_=1, to=500, increment=1, textvariable=self.keep_count_var, width=10).pack(side=tk.LEFT)
+        ttk.Label(row, text="  按内容丰富度保留前N个角色", foreground="gray").pack(side=tk.LEFT, padx=10)
+
+        # 筛选按钮提示文本随 keep_count_var 联动
+        self._filter_desc_var = tk.StringVar(value=f"保留前 30 个内容最丰富的角色文件")
+        self.keep_count_var.trace_add("write", self._update_filter_desc)
+
         actions = ttk.LabelFrame(f, text="快捷操作", padding=8)
         actions.pack(fill=tk.X)
         ttk.Button(actions, text="打开输出目录", command=self.open_output_dir).pack(side=tk.LEFT, padx=2)
@@ -342,7 +374,7 @@ class ConfigGUI:
                 ("split",      "分割",       "将小说文本分割为文本块"),
                 ("extract",    "提取",       "从文本块中提取角色信息"),
                 ("merge",      "合并",       "合并重复的角色数据"),
-                ("filter",     "筛选",       "保留前50个最大的角色文件"),
+                ("filter",     "筛选",       None),  # 提示文本由 _filter_desc_var 动态提供
                 ("create",     "制卡",       "从合并后的数据创建角色卡"),
             ]),
             ("世界书", [
@@ -365,13 +397,22 @@ class ConfigGUI:
                 btn = ttk.Button(row, text=label, width=10,
                                  command=lambda m=mode: self.run_workflow(m))
                 btn.pack(side=tk.LEFT, padx=2)
-                self._tooltip(btn, desc)
+                # 筛选按钮使用动态提示文本
+                if mode == "filter":
+                    self._tooltip(btn, self._filter_desc_var)
+                elif desc:
+                    self._tooltip(btn, desc)
 
     def _tooltip(self, widget, text):
-        """为控件绑定悬浮提示"""
+        """为控件绑定悬浮提示。text 可为字符串或 StringVar（动态更新）"""
         tw = None
+        lbl = None
+        def get_text():
+            if isinstance(text, tk.StringVar):
+                return text.get()
+            return text
         def show(event):
-            nonlocal tw
+            nonlocal tw, lbl
             if tw:
                 return
             x = widget.winfo_rootx() + 25
@@ -379,18 +420,30 @@ class ConfigGUI:
             tw = tk.Toplevel(widget)
             tw.wm_overrideredirect(True)
             tw.wm_geometry(f"+{x}+{y}")
-            lbl = ttk.Label(tw, text=text, background="#ffffcc", relief=tk.SOLID,
+            lbl = ttk.Label(tw, text=get_text(), background="#ffffcc", relief=tk.SOLID,
                             borderwidth=1, padding=4, font=("", 9))
             lbl.pack()
+            # 如果是 StringVar，追踪变化实时更新显示
+            if isinstance(text, tk.StringVar):
+                def update(*a):
+                    if lbl and lbl.winfo_exists():
+                        lbl.config(text=text.get())
+                text.trace_add("write", update)
         def hide(event):
-            nonlocal tw
+            nonlocal tw, lbl
             if tw:
                 tw.destroy()
                 tw = None
+                lbl = None
         widget.bind("<Enter>", show, add="+")
         widget.bind("<Leave>", hide, add="+")
 
     # ── 辅助方法 ─────────────────────────────────────────────
+
+    def _update_filter_desc(self, *args):
+        """当 keep_count 改变时更新筛选按钮的提示文本"""
+        count = self.keep_count_var.get()
+        self._filter_desc_var.set(f"保留前 {count} 个内容最丰富的角色文件")
 
     def _toggle_show(self, entry_widget):
         """切换密码显示"""
@@ -520,6 +573,9 @@ class ConfigGUI:
         self._set_val(self.max_chunk_var, tp.get("max_chunk_chars", 60000))
         self._set_val(self.buffer_chars_var, tp.get("buffer_chars", 200))
 
+        cf = self.data.get("character_filter", {})
+        self._set_val(self.keep_count_var, cf.get("keep_count", 30))
+
         self._check_input_file()
 
     def save_config(self):
@@ -568,6 +624,8 @@ class ConfigGUI:
         self.data.setdefault("text_processing", {})["max_chunk_chars"] = self.max_chunk_var.get()
         self.data["text_processing"]["buffer_chars"] = self.buffer_chars_var.get()
 
+        self.data.setdefault("character_filter", {})["keep_count"] = self.keep_count_var.get()
+
     def _set_val(self, var, val):
         try:
             if isinstance(var, tk.StringVar):
@@ -586,7 +644,8 @@ class ConfigGUI:
     def run_workflow(self, mode):
         """保存配置并运行指定工作流模式"""
         self.save_config()
-        self.log(f"▶ 开始运行: python character_workflow.py {mode}")
+        mode_name = self._mode_names.get(mode, mode)
+        self.log(f"▶ 开始运行: {mode_name}")
         threading.Thread(target=self._run_workflow_thread, args=(mode,), daemon=True).start()
 
     def _get_python_exe(self):
@@ -602,7 +661,8 @@ class ConfigGUI:
 
     def _run_workflow_thread(self, mode):
         try:
-            self.set_status(f"运行中: {mode}...", "blue")
+            mode_name = self._mode_names.get(mode, mode)
+            self.set_status(f"正在{mode_name}...", "blue")
             python_exe = self._get_python_exe()
             script_dir = Path(__file__).parent.resolve()
 
@@ -638,10 +698,10 @@ class ConfigGUI:
                         if line.strip():
                             self.log(f"  ⚠ {line.strip()}")
             if result.returncode == 0:
-                self.log(f"✅ 工作流 [{mode}] 执行完毕")
+                self.log(f"✅ {mode_name} 执行完毕")
                 self.set_status("执行完毕", "green")
             else:
-                self.log(f"❌ 工作流 [{mode}] 失败 (exit={result.returncode})")
+                self.log(f"❌ {mode_name} 失败")
                 self.set_status("执行失败", "red")
         except Exception as e:
             self.log(f"❌ 运行异常: {e}")
